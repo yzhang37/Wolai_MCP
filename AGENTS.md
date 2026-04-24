@@ -50,26 +50,28 @@ Database note:
 - `scripts/wolai_mcp_client.py database <database_id>` wraps this read-only
   database call using credentials from Codex config without printing secrets.
 
-Reference-block note:
+Block reference rules:
 
-- Some Wolai pages store the real answer body in `[reference]` blocks. The
-  MCP-rendered `get_page_content` output may show these as `(Empty)`.
-- Raw OpenAPI blocks expose `source_block_id` for these references. Read that
-  source block to get the actual content.
-- Wolai rich text can also contain inline `bi_link` references with a
-  `block_id`. These may point to pages or blocks that need another read.
-- Inline `bi_link.block_id` expansion is limited: expand only common body
-  blocks such as text, headings, lists, equations, callouts, quotes, code, and
-  references. If the target is a page, database, image, or another container or
-  media block, usually do not expand it; just note the linked target.
-- Always use cycle detection and a max depth when expanding references, because
-  references can point back to already visited content.
-- `scripts/wolai_mcp_client.py page-expanded <block_id>` expands reference
-  blocks and eligible inline `bi_link` references recursively with a visited
-  set.
-- The helper may cache block JSON only within a single `page-expanded` command
-  invocation to avoid duplicate reads. Do not persist cache across commands;
-  a new command should re-read Wolai because page content may change.
+- Some Wolai pages store real answer text in `[reference]` blocks. MCP's
+  simplified `get_page_content` output may show them as `(Empty)`.
+- For a block-level `[reference]`, read the reference block's raw OpenAPI JSON,
+  find `source_block_id`, then read that source block as the real content.
+- For inline rich-text links, inspect entries with `type: "bi_link"` and
+  `block_id`. Read the target block only after checking its type.
+- Inline `bi_link.block_id` should be expanded only when the target is a common
+  body element: text, heading, list, numbered list, formula/equation, callout,
+  quote, code, or another reference.
+- If an inline `bi_link.block_id` target is a page, database, image, media, or
+  other container/asset block, normally do not expand it. Treat it as a link or
+  source pointer.
+- Always keep a per-read `visited` set and stop if a block ID repeats. Reference
+  chains can form loops. Also use a small max depth.
+- Prefer targeted block-by-block resolution over blindly expanding an entire
+  page. `scripts/wolai_mcp_client.py page-expanded <block_id>` is only a
+  debugging convenience, not the default reading strategy.
+- A helper may cache block JSON only within a single command invocation to avoid
+  duplicate reads. Do not persist cache across commands; a new command should
+  re-read Wolai because page content may change.
 
 Write tools:
 
@@ -105,9 +107,11 @@ For read tasks:
 3. If a child is a `[database]`, use the helper script's `database` command to
    list row page IDs.
 4. Use `get_page_content` for simple pages.
-5. If the page contains `[reference]` blocks or inline linked blocks, use
-   `page-expanded` so referenced answer sections are not missed.
-6. Use `search_pages_by_title` only when navigation is not enough.
+5. If the page contains `[reference]` blocks, resolve each reference by reading
+   its raw `source_block_id` and then that source block.
+6. If a text block contains inline `bi_link` entries, inspect the target block
+   type. Expand only body-element targets; skip page/database/media targets.
+7. Use `search_pages_by_title` only when navigation is not enough.
 
 For write tasks:
 

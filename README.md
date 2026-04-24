@@ -45,19 +45,26 @@ Read a page:
 C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py page fND6EnXuZdoA1RPavzgaSY
 ```
 
-Read a page and expand Wolai reference blocks:
+Debug reference expansion for one page:
 
 ```powershell
 C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py page-expanded rT8wZuoL6GKvVLi1VEP1SS --max-depth 4
 ```
 
-This follows `[reference]` blocks through `source_block_id` and inline
-`bi_link` references through `block_id` when the target is a common body block
-such as text, headings, lists, callouts, quotes, equations, code, or another
-reference. Page, database, image, and other container/media targets are noted
-but not expanded. It keeps a visited set and stops at the configured max depth
-to avoid reference cycles. Block JSON may be cached only within this one command
-run; each new invocation re-reads Wolai.
+Prefer targeted block-by-block resolution when accuracy matters:
+
+- For a `[reference]` block, inspect raw OpenAPI JSON, read `source_block_id`,
+  then read that source block as the visible content.
+- For inline rich text `bi_link.block_id`, first read the target block and check
+  its type. Expand only normal body elements such as text, headings, lists,
+  callouts, quotes, equations, code, and references.
+- Do not expand inline targets that are pages, databases, images, media, or other
+  container/asset blocks; treat them as links or source pointers.
+- Keep a per-read visited set and small max depth to avoid reference loops.
+
+The `page-expanded` command is a debugging convenience for this process. It is
+not meant to replace careful targeted inspection. Block JSON may be cached only
+within one command run; each new invocation re-reads Wolai.
 
 Read database rows:
 
@@ -89,6 +96,5 @@ C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py search Amazon 
 - Wolai database rows can be read through `GET /v1/databases/{id}`. The helper
   script exposes this as the `database` command and prints row `page_id` values.
 - Wolai reference blocks can hide answer content from MCP's simplified page
-  rendering. The helper script exposes `page-expanded` to recursively resolve
-  `source_block_id` and eligible inline `bi_link` references with cycle
-  protection.
+  rendering. Resolve block-level references via `source_block_id`, and resolve
+  inline `bi_link.block_id` only when the target is a normal body block.
