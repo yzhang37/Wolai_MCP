@@ -14,9 +14,9 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 
-DEFAULT_CODEX_CONFIG = Path(r"C:\Users\lacus\.codex\config.toml")
 DEFAULT_SERVER_NAME = "wolai-kb"
 BASE_URL = "https://openapi.wolai.com/v1"
+PLACEHOLDER_VALUES = {"...", "replace-me", "your-app-id", "your-app-secret"}
 INLINE_EXPANDABLE_TYPES = {
     "text",
     "heading",
@@ -40,6 +40,21 @@ INLINE_EXPANDABLE_TYPES = {
 }
 
 
+def default_codex_config_path() -> Path:
+    override = os.environ.get("CODEX_CONFIG")
+    if override:
+        return Path(override).expanduser()
+
+    home_config = Path.home() / ".codex" / "config.toml"
+    if home_config.exists():
+        return home_config
+
+    return home_config
+
+
+DEFAULT_CODEX_CONFIG = default_codex_config_path()
+
+
 def configure_output() -> None:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -49,6 +64,12 @@ def configure_output() -> None:
 
 
 def load_server_config(config_path: Path, server_name: str) -> dict[str, Any]:
+    if not config_path.exists():
+        raise SystemExit(
+            f"Codex config not found at {config_path}. "
+            "Pass --config or set CODEX_CONFIG."
+        )
+
     data = tomllib.loads(config_path.read_text(encoding="utf-8"))
     try:
         return data["mcp_servers"][server_name]
@@ -58,12 +79,61 @@ def load_server_config(config_path: Path, server_name: str) -> dict[str, Any]:
         ) from exc
 
 
+def merged_server_env(server: dict[str, Any]) -> dict[str, str]:
+    env = os.environ.copy()
+    env.update(server.get("env", {}))
+    return env
+
+
+def server_command(server: dict[str, Any]) -> str:
+    command = str(server.get("command", ""))
+    if not command:
+        raise SystemExit("The selected MCP server does not define a command.")
+
+    if os.name != "nt" and len(command) >= 2 and command[1] == ":":
+        raise SystemExit(
+            "The configured MCP command looks like a Windows drive path, "
+            "but this process is not running on Windows. Set it to this "
+            "machine's wolai-mcp executable, for example "
+            "/absolute/path/to/Wolai_MCP/.venv/bin/wolai-mcp."
+        )
+
+    resolved = os.path.expandvars(os.path.expanduser(command))
+    if Path(resolved).is_absolute() and not Path(resolved).exists():
+        raise SystemExit(f"The configured MCP command does not exist: {resolved}")
+
+    return resolved
+
+
 def result_text(result: Any) -> str:
     return "\n".join(getattr(item, "text", str(item)) for item in result.content)
 
 
+def is_placeholder_value(value: str | None) -> bool:
+    return not value or value.strip().lower() in PLACEHOLDER_VALUES
+
+
+def env_status(value: str | None) -> str:
+    if not value:
+        return "missing"
+    if is_placeholder_value(value):
+        return "placeholder"
+    return "present"
+
+
 def get_wolai_token(server: dict[str, Any]) -> str:
-    env = server.get("env", {})
+    env = merged_server_env(server)
+    missing = [
+        key
+        for key in ("WOLAI_APP_ID", "WOLAI_APP_SECRET")
+        if is_placeholder_value(env.get(key))
+    ]
+    if missing:
+        raise SystemExit(
+            "Missing or placeholder Wolai credential env value(s): "
+            + ", ".join(missing)
+        )
+
     response = requests.post(
         f"{BASE_URL}/token",
         json={
@@ -237,11 +307,10 @@ def render_expanded_block(
 
 async def with_session(args: argparse.Namespace, callback):
     server = load_server_config(args.config, args.server)
-    env = os.environ.copy()
-    env.update(server.get("env", {}))
+    env = merged_server_env(server)
 
     params = StdioServerParameters(
-        command=server["command"],
+        command=server_command(server),
         args=server.get("args", []),
         env=env,
     )
@@ -261,6 +330,35 @@ async def cmd_tools(args: argparse.Namespace) -> None:
     await with_session(args, run)
 
 
+async def cmd_doctor(args: argparse.Namespace) -> None:
+    print(f"Config path: {args.config}")
+    if not args.config.exists():
+        print("Config exists: no")
+        return
+
+    print("Config exists: yes")
+    try:
+        server = load_server_config(args.config, args.server)
+    except SystemExit as exc:
+        print(f"Server '{args.server}': missing")
+        print(exc)
+        return
+
+    print(f"Server '{args.server}': present")
+    try:
+        command = server_command(server)
+    except SystemExit as exc:
+        print(f"Command: invalid ({exc})")
+    else:
+        print(f"Command: {command}")
+        if Path(command).is_absolute():
+            print(f"Command exists: {Path(command).exists()}")
+
+    env = merged_server_env(server)
+    for key in ("WOLAI_APP_ID", "WOLAI_APP_SECRET", "WOLAI_ROOT_ID"):
+        print(f"{key}: {env_status(env.get(key))}")
+
+
 async def cmd_root(args: argparse.Namespace) -> None:
     async def run(session: ClientSession, _server: dict[str, Any]) -> None:
         result = await session.call_tool("get_root_info", {})
@@ -271,7 +369,7 @@ async def cmd_root(args: argparse.Namespace) -> None:
 
 async def cmd_children(args: argparse.Namespace) -> None:
     async def run(session: ClientSession, server: dict[str, Any]) -> None:
-        block_id = args.block_id or server.get("env", {}).get("WOLAI_ROOT_ID", "")
+        block_id = args.block_id or merged_server_env(server).get("WOLAI_ROOT_ID", "")
         if not block_id:
             raise SystemExit("No block_id provided and WOLAI_ROOT_ID is not set.")
         result = await session.call_tool("list_child_blocks", {"block_id": block_id})
@@ -282,7 +380,7 @@ async def cmd_children(args: argparse.Namespace) -> None:
 
 async def cmd_page(args: argparse.Namespace) -> None:
     async def run(session: ClientSession, server: dict[str, Any]) -> None:
-        block_id = args.block_id or server.get("env", {}).get("WOLAI_ROOT_ID", "")
+        block_id = args.block_id or merged_server_env(server).get("WOLAI_ROOT_ID", "")
         if not block_id:
             raise SystemExit("No block_id provided and WOLAI_ROOT_ID is not set.")
         result = await session.call_tool("get_page_content", {"block_id": block_id})
@@ -344,7 +442,7 @@ async def cmd_database(args: argparse.Namespace) -> None:
 
 async def cmd_page_expanded(args: argparse.Namespace) -> None:
     server = load_server_config(args.config, args.server)
-    block_id = args.block_id or server.get("env", {}).get("WOLAI_ROOT_ID", "")
+    block_id = args.block_id or merged_server_env(server).get("WOLAI_ROOT_ID", "")
     if not block_id:
         raise SystemExit("No block_id provided and WOLAI_ROOT_ID is not set.")
 
@@ -370,6 +468,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     tools = sub.add_parser("tools", help="List MCP tools.")
     tools.set_defaults(func=cmd_tools)
+
+    doctor = sub.add_parser("doctor", help="Check local config without printing secrets.")
+    doctor.set_defaults(func=cmd_doctor)
 
     root = sub.add_parser("root", help="Read configured root info.")
     root.set_defaults(func=cmd_root)

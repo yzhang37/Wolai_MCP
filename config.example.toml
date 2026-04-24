@@ -1,8 +1,12 @@
 [mcp_servers.wolai-kb]
-command = "C:\\Users\\lacus\\anaconda3\\Scripts\\wolai-mcp.exe"
+# Replace with this machine's absolute path to the wolai-mcp executable.
+# POSIX venv example:
+command = "/absolute/path/to/Wolai_MCP/.venv/bin/wolai-mcp"
+
+# Windows venv example:
+# command = "C:\\absolute\\path\\to\\Wolai_MCP\\.venv\\Scripts\\wolai-mcp.exe"
 
 [mcp_servers.wolai-kb.env]
 WOLAI_APP_ID = "replace-me"
 WOLAI_APP_SECRET = "replace-me"
 WOLAI_ROOT_ID = "fND6EnXuZdoA1RPavzgaSY"
-

@@ -1,18 +1,42 @@
 # Wolai MCP Agent Notes
 
-This directory documents the working Wolai MCP setup for this machine.
-It is meant for future Codex/agent sessions, so the notes below should be
-treated as operational memory.
+This directory documents the repo-level Wolai MCP workflow for future
+Codex/agent sessions. Treat these notes as operational memory, but keep them
+machine-neutral: personal paths and real credentials belong only in local
+Codex config files.
 
-## Current Setup
+## Setup Contract
 
 - MCP server name in Codex config: `wolai-kb`
-- Codex config path: `C:\Users\lacus\.codex\config.toml`
-- Wolai MCP executable: `C:\Users\lacus\anaconda3\Scripts\wolai-mcp.exe`
-- Python runtime used by the MCP package: `C:\Users\lacus\anaconda3\python.exe`
-- Installed package: `wolai-mcp` version `1.1.0`
+- Default Codex config path: `CODEX_CONFIG` when set, otherwise
+  `~/.codex/config.toml`
+- Package/runtime: `wolai-mcp==1.1.0` installed in any local Python environment
 - MCP implementation: stdio server built with `mcp.server.fastmcp.FastMCP`
 - Server display name: `wolai-knowledge-base`
+- Required Wolai env values: `WOLAI_APP_ID`, `WOLAI_APP_SECRET`,
+  `WOLAI_ROOT_ID`
+
+The local Codex config should point `command` to that machine's
+`wolai-mcp` executable. Prefer an absolute path in the local config, but do not
+commit machine-specific paths.
+
+Generic local config shape:
+
+```toml
+[mcp_servers.wolai-kb]
+command = "/absolute/path/to/Wolai_MCP/.venv/bin/wolai-mcp"
+
+[mcp_servers.wolai-kb.env]
+WOLAI_APP_ID = "..."
+WOLAI_APP_SECRET = "..."
+WOLAI_ROOT_ID = "fND6EnXuZdoA1RPavzgaSY"
+```
+
+Windows venv command shape:
+
+```toml
+command = "C:\\absolute\\path\\to\\Wolai_MCP\\.venv\\Scripts\\wolai-mcp.exe"
+```
 
 Do not print or write `WOLAI_APP_SECRET` into logs, docs, commits, or chat
 unless the user explicitly requests secret inspection. Prefer reading env
@@ -26,8 +50,8 @@ The configured root page was verified through the MCP server:
 Current Root Directory: 'Starla / Sail (1/7, 14.28%)' (ID: fND6EnXuZdoA1RPavzgaSY)
 ```
 
-This confirms that the Wolai App ID/App Secret/root ID combination works
-when the process can access `https://openapi.wolai.com`.
+This confirms that the Wolai App ID/App Secret/root ID combination works when
+the process can access `https://openapi.wolai.com`.
 
 ## Available Wolai MCP Tools
 
@@ -39,6 +63,13 @@ Read-oriented tools:
 - `get_page_content`: read a page/block and render child blocks as text.
 - `search_pages_by_title`: traverse page tree and match page titles.
 - `get_breadcrumbs`: trace a block path back through page hierarchy.
+
+Configuration tools:
+
+- `set_wolai_credentials`: set Wolai App ID/App Secret.
+- `set_root_page`: set the root page ID.
+- Do not use configuration tools unless the user explicitly asks to edit Wolai
+  MCP runtime config; do not print secrets.
 
 Database note:
 
@@ -95,8 +126,8 @@ Unless the user asks to edit Wolai, default to the read-only tools.
 - `search_pages_by_title` can be slow because Wolai does not expose a global
   search API; the MCP server traverses the tree from the root.
 - Avoid passing Chinese text through PowerShell here-strings unless stdout and
-  source encoding are controlled. ASCII queries such as `Amazon` worked in the
-  previous smoke test.
+  source encoding are controlled. ASCII queries such as `Amazon` are safer for
+  smoke tests.
 
 ## Preferred Workflow
 
@@ -122,16 +153,32 @@ For write tasks:
 ## Local Helper Script
 
 Use `scripts/wolai_mcp_client.py` for smoke tests and direct MCP calls from
-local Python when native Codex MCP tools are not visible.
+local Python when native Codex MCP tools are not visible. The helper defaults
+to `CODEX_CONFIG` when set, otherwise `~/.codex/config.toml`; pass `--config`
+only for nonstandard locations.
 
-Examples:
+POSIX examples:
+
+```bash
+.venv/bin/python scripts/wolai_mcp_client.py doctor
+.venv/bin/python scripts/wolai_mcp_client.py tools
+.venv/bin/python scripts/wolai_mcp_client.py root
+.venv/bin/python scripts/wolai_mcp_client.py children
+.venv/bin/python scripts/wolai_mcp_client.py page fND6EnXuZdoA1RPavzgaSY
+.venv/bin/python scripts/wolai_mcp_client.py page-expanded rT8wZuoL6GKvVLi1VEP1SS --max-depth 4
+.venv/bin/python scripts/wolai_mcp_client.py database mjrgyUWX1NnNYmcHq2vMJ4
+.venv/bin/python scripts/wolai_mcp_client.py search Amazon --max-depth 2
+```
+
+Windows venv examples:
 
 ```powershell
-C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py tools
-C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py root
-C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py children
-C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py page fND6EnXuZdoA1RPavzgaSY
-C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py page-expanded rT8wZuoL6GKvVLi1VEP1SS --max-depth 4
-C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py database mjrgyUWX1NnNYmcHq2vMJ4
-C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py search Amazon --max-depth 2
+.\.venv\Scripts\python.exe .\scripts\wolai_mcp_client.py doctor
+.\.venv\Scripts\python.exe .\scripts\wolai_mcp_client.py tools
+.\.venv\Scripts\python.exe .\scripts\wolai_mcp_client.py root
+.\.venv\Scripts\python.exe .\scripts\wolai_mcp_client.py children
+.\.venv\Scripts\python.exe .\scripts\wolai_mcp_client.py page fND6EnXuZdoA1RPavzgaSY
+.\.venv\Scripts\python.exe .\scripts\wolai_mcp_client.py page-expanded rT8wZuoL6GKvVLi1VEP1SS --max-depth 4
+.\.venv\Scripts\python.exe .\scripts\wolai_mcp_client.py database mjrgyUWX1NnNYmcHq2vMJ4
+.\.venv\Scripts\python.exe .\scripts\wolai_mcp_client.py search Amazon --max-depth 2
 ```
