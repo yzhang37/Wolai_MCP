@@ -1,0 +1,8 @@
+[mcp_servers.wolai-kb]
+command = "C:\\Users\\lacus\\anaconda3\\Scripts\\wolai-mcp.exe"
+
+[mcp_servers.wolai-kb.env]
+WOLAI_APP_ID = "replace-me"
+WOLAI_APP_SECRET = "replace-me"
+WOLAI_ROOT_ID = "fND6EnXuZdoA1RPavzgaSY"
+
