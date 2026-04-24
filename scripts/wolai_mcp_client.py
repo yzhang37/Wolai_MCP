@@ -17,6 +17,27 @@ from mcp.client.stdio import stdio_client
 DEFAULT_CODEX_CONFIG = Path(r"C:\Users\lacus\.codex\config.toml")
 DEFAULT_SERVER_NAME = "wolai-kb"
 BASE_URL = "https://openapi.wolai.com/v1"
+INLINE_EXPANDABLE_TYPES = {
+    "text",
+    "heading",
+    "heading_1",
+    "heading_2",
+    "heading_3",
+    "enum_list",
+    "bull_list",
+    "bulleted_list",
+    "numbered_list",
+    "todo_list",
+    "toggle_list",
+    "quote",
+    "callout",
+    "reference",
+    "block_equation",
+    "code",
+    "python",
+    "javascript",
+    "java",
+}
 
 
 def configure_output() -> None:
@@ -129,17 +150,23 @@ def render_expanded_block(
     depth: int = 0,
     max_depth: int = 4,
     visited: set[str] | None = None,
+    cache: dict[str, dict[str, Any]] | None = None,
     expand_inline_links: bool = True,
 ) -> list[str]:
     if visited is None:
         visited = set()
+    if cache is None:
+        cache = {}
     if block_id in visited:
         return [f"{'  ' * depth}[cycle skipped: {block_id}]"]
     if depth > max_depth:
         return [f"{'  ' * depth}[max depth reached: {block_id}]"]
 
     visited.add(block_id)
-    block = get_wolai_block(token, block_id)
+    block = cache.get(block_id)
+    if block is None:
+        block = get_wolai_block(token, block_id)
+        cache[block_id] = block
     block_type = block.get("type", "")
 
     if block_type == "reference":
@@ -154,6 +181,7 @@ def render_expanded_block(
                 depth=depth + 1,
                 max_depth=max_depth,
                 visited=visited,
+                cache=cache,
                 expand_inline_links=expand_inline_links,
             )
         )
@@ -165,6 +193,17 @@ def render_expanded_block(
     if expand_inline_links:
         for label, linked_id in inline_links:
             lines.append(f"{'  ' * (depth + 1)}[inline link: {label} -> {linked_id}]")
+            linked_block = cache.get(linked_id)
+            if linked_block is None:
+                linked_block = get_wolai_block(token, linked_id)
+                cache[linked_id] = linked_block
+            linked_type = linked_block.get("type", "")
+            if linked_type not in INLINE_EXPANDABLE_TYPES:
+                lines.append(
+                    f"{'  ' * (depth + 2)}"
+                    f"[inline target not expanded: type={linked_type or 'unknown'}]"
+                )
+                continue
             lines.extend(
                 render_expanded_block(
                     token,
@@ -172,6 +211,7 @@ def render_expanded_block(
                     depth=depth + 2,
                     max_depth=max_depth,
                     visited=visited,
+                    cache=cache,
                     expand_inline_links=expand_inline_links,
                 )
             )
@@ -187,6 +227,7 @@ def render_expanded_block(
                 depth=depth + 1,
                 max_depth=max_depth,
                 visited=visited,
+                cache=cache,
                 expand_inline_links=expand_inline_links,
             )
         )

@@ -52,8 +52,11 @@ C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py page-expanded 
 ```
 
 This follows `[reference]` blocks through `source_block_id` and inline
-`bi_link` references through `block_id`. It keeps a visited set and stops at
-the configured max depth to avoid reference cycles.
+`bi_link` references through `block_id` when the target is a common body block
+such as text, headings, lists, callouts, quotes, equations, code, or another
+reference. Page, database, image, and other container/media targets are noted
+but not expanded. It keeps a visited set and stops at the configured max depth
+to avoid reference cycles.
 
 Read database rows:
 
@@ -86,4 +89,5 @@ C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py search Amazon 
   script exposes this as the `database` command and prints row `page_id` values.
 - Wolai reference blocks can hide answer content from MCP's simplified page
   rendering. The helper script exposes `page-expanded` to recursively resolve
-  `source_block_id` and inline `bi_link` references with cycle protection.
+  `source_block_id` and eligible inline `bi_link` references with cycle
+  protection.

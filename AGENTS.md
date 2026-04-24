@@ -58,10 +58,15 @@ Reference-block note:
   source block to get the actual content.
 - Wolai rich text can also contain inline `bi_link` references with a
   `block_id`. These may point to pages or blocks that need another read.
+- Inline `bi_link.block_id` expansion is limited: expand only common body
+  blocks such as text, headings, lists, equations, callouts, quotes, code, and
+  references. If the target is a page, database, image, or another container or
+  media block, usually do not expand it; just note the linked target.
 - Always use cycle detection and a max depth when expanding references, because
   references can point back to already visited content.
 - `scripts/wolai_mcp_client.py page-expanded <block_id>` expands reference
-  blocks and inline `bi_link` references recursively with a visited set.
+  blocks and eligible inline `bi_link` references recursively with a visited
+  set.
 
 Write tools:
 
