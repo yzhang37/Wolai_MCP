@@ -56,7 +56,8 @@ This follows `[reference]` blocks through `source_block_id` and inline
 such as text, headings, lists, callouts, quotes, equations, code, or another
 reference. Page, database, image, and other container/media targets are noted
 but not expanded. It keeps a visited set and stops at the configured max depth
-to avoid reference cycles.
+to avoid reference cycles. Block JSON may be cached only within this one command
+run; each new invocation re-reads Wolai.
 
 Read database rows:
 

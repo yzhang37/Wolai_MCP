@@ -67,6 +67,9 @@ Reference-block note:
 - `scripts/wolai_mcp_client.py page-expanded <block_id>` expands reference
   blocks and eligible inline `bi_link` references recursively with a visited
   set.
+- The helper may cache block JSON only within a single `page-expanded` command
+  invocation to avoid duplicate reads. Do not persist cache across commands;
+  a new command should re-read Wolai because page content may change.
 
 Write tools:
 
