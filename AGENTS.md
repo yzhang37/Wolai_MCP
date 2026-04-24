@@ -50,6 +50,19 @@ Database note:
 - `scripts/wolai_mcp_client.py database <database_id>` wraps this read-only
   database call using credentials from Codex config without printing secrets.
 
+Reference-block note:
+
+- Some Wolai pages store the real answer body in `[reference]` blocks. The
+  MCP-rendered `get_page_content` output may show these as `(Empty)`.
+- Raw OpenAPI blocks expose `source_block_id` for these references. Read that
+  source block to get the actual content.
+- Wolai rich text can also contain inline `bi_link` references with a
+  `block_id`. These may point to pages or blocks that need another read.
+- Always use cycle detection and a max depth when expanding references, because
+  references can point back to already visited content.
+- `scripts/wolai_mcp_client.py page-expanded <block_id>` expands reference
+  blocks and inline `bi_link` references recursively with a visited set.
+
 Write tools:
 
 - `create_page`: create a subpage.
@@ -83,8 +96,10 @@ For read tasks:
 2. Use `list_child_blocks` on the root or known page ID to navigate.
 3. If a child is a `[database]`, use the helper script's `database` command to
    list row page IDs.
-4. Use `get_page_content` for the target page or row page.
-5. Use `search_pages_by_title` only when navigation is not enough.
+4. Use `get_page_content` for simple pages.
+5. If the page contains `[reference]` blocks or inline linked blocks, use
+   `page-expanded` so referenced answer sections are not missed.
+6. Use `search_pages_by_title` only when navigation is not enough.
 
 For write tasks:
 
@@ -104,6 +119,7 @@ C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py tools
 C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py root
 C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py children
 C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py page fND6EnXuZdoA1RPavzgaSY
+C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py page-expanded rT8wZuoL6GKvVLi1VEP1SS --max-depth 4
 C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py database mjrgyUWX1NnNYmcHq2vMJ4
 C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py search Amazon --max-depth 2
 ```

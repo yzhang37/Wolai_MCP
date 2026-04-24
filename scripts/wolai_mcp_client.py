@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 import tomllib
@@ -52,6 +53,145 @@ def get_wolai_token(server: dict[str, Any]) -> str:
     )
     response.raise_for_status()
     return response.json()["data"]["app_token"]
+
+
+def wolai_headers(token: str) -> dict[str, str]:
+    return {"Authorization": token, "Content-Type": "application/json"}
+
+
+def get_wolai_block(token: str, block_id: str) -> dict[str, Any]:
+    response = requests.get(
+        f"{BASE_URL}/blocks/{block_id}",
+        headers=wolai_headers(token),
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json().get("data", {})
+
+
+def get_wolai_children(token: str, block_id: str) -> list[dict[str, Any]]:
+    response = requests.get(
+        f"{BASE_URL}/blocks/{block_id}/children",
+        headers=wolai_headers(token),
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json().get("data", [])
+
+
+def parse_rich_text(content: Any) -> tuple[str, list[tuple[str, str]]]:
+    if not isinstance(content, list):
+        return str(content or ""), []
+
+    text_parts = []
+    inline_links = []
+    for item in content:
+        if not isinstance(item, dict):
+            text_parts.append(str(item))
+            continue
+
+        title = item.get("title", "")
+        if item.get("bold"):
+            title = f"**{title}**"
+        if item.get("italic"):
+            title = f"*{title}*"
+        text_parts.append(title)
+
+        if item.get("type") == "bi_link" and item.get("block_id"):
+            inline_links.append((item.get("title", "linked block"), item["block_id"]))
+
+    return "".join(text_parts), inline_links
+
+
+def format_block_line(block_type: str, text: str, block_id: str, depth: int) -> str:
+    indent = "  " * depth
+    if block_type == "divider":
+        return f"{indent}---"
+    if block_type == "page":
+        return f"{indent}# {text} (ID: {block_id})"
+    if block_type == "heading":
+        return f"{indent}## {text}"
+    if block_type in {"enum_list", "bulleted_list"}:
+        return f"{indent}- {text}"
+    if block_type in {"bull_list", "numbered_list"}:
+        return f"{indent}1. {text}"
+    if block_type == "todo_list":
+        return f"{indent}- [ ] {text}"
+    if block_type == "toggle_list":
+        return f"{indent}> {text}"
+    return f"{indent}[{block_type}] {text}" if block_type else f"{indent}{text}"
+
+
+def render_expanded_block(
+    token: str,
+    block_id: str,
+    *,
+    depth: int = 0,
+    max_depth: int = 4,
+    visited: set[str] | None = None,
+    expand_inline_links: bool = True,
+) -> list[str]:
+    if visited is None:
+        visited = set()
+    if block_id in visited:
+        return [f"{'  ' * depth}[cycle skipped: {block_id}]"]
+    if depth > max_depth:
+        return [f"{'  ' * depth}[max depth reached: {block_id}]"]
+
+    visited.add(block_id)
+    block = get_wolai_block(token, block_id)
+    block_type = block.get("type", "")
+
+    if block_type == "reference":
+        source_id = block.get("source_block_id")
+        if not source_id:
+            return [f"{'  ' * depth}[reference] (unresolved, ID: {block_id})"]
+        lines = [f"{'  ' * depth}[reference -> {source_id}]"]
+        lines.extend(
+            render_expanded_block(
+                token,
+                source_id,
+                depth=depth + 1,
+                max_depth=max_depth,
+                visited=visited,
+                expand_inline_links=expand_inline_links,
+            )
+        )
+        return lines
+
+    text, inline_links = parse_rich_text(block.get("content", ""))
+    lines = [format_block_line(block_type, text, block_id, depth)]
+
+    if expand_inline_links:
+        for label, linked_id in inline_links:
+            lines.append(f"{'  ' * (depth + 1)}[inline link: {label} -> {linked_id}]")
+            lines.extend(
+                render_expanded_block(
+                    token,
+                    linked_id,
+                    depth=depth + 2,
+                    max_depth=max_depth,
+                    visited=visited,
+                    expand_inline_links=expand_inline_links,
+                )
+            )
+
+    for child in get_wolai_children(token, block_id):
+        child_id = child.get("id")
+        if not child_id:
+            continue
+        lines.extend(
+            render_expanded_block(
+                token,
+                child_id,
+                depth=depth + 1,
+                max_depth=max_depth,
+                visited=visited,
+                expand_inline_links=expand_inline_links,
+            )
+        )
+
+    return lines
 
 
 async def with_session(args: argparse.Namespace, callback):
@@ -125,42 +265,59 @@ async def cmd_search(args: argparse.Namespace) -> None:
 
 
 async def cmd_database(args: argparse.Namespace) -> None:
-    async def run(_session: ClientSession, server: dict[str, Any]) -> None:
-        token = get_wolai_token(server)
-        response = requests.get(
-            f"{BASE_URL}/databases/{args.database_id}",
-            headers={"Authorization": token, "Content-Type": "application/json"},
-            timeout=30,
-        )
-        response.raise_for_status()
-        payload = response.json()
+    server = load_server_config(args.config, args.server)
+    token = get_wolai_token(server)
+    response = requests.get(
+        f"{BASE_URL}/databases/{args.database_id}",
+        headers=wolai_headers(token),
+        timeout=30,
+    )
+    response.raise_for_status()
+    payload = response.json()
 
-        rows = payload.get("data", {}).get("rows", [])
-        if args.raw:
-            print(json.dumps(payload, ensure_ascii=False, indent=2))
-            return
+    rows = payload.get("data", {}).get("rows", [])
+    if args.raw:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
 
-        if not rows:
-            print("No database rows found.")
-            return
+    if not rows:
+        print("No database rows found.")
+        return
 
-        for row in rows:
-            page_id = row.get("page_id", "")
-            data = row.get("data", {})
-            title = ""
-            fields = []
-            for key, cell in data.items():
-                value = cell.get("value", "") if isinstance(cell, dict) else cell
-                if not value:
-                    continue
-                if cell.get("type") == "primary":
-                    title = str(value)
-                else:
-                    fields.append(f"{key}={value}")
-            suffix = f" | {'; '.join(fields)}" if fields else ""
-            print(f"- {title or '(Untitled)'} (page_id: {page_id}){suffix}")
+    for row in rows:
+        page_id = row.get("page_id", "")
+        data = row.get("data", {})
+        title = ""
+        fields = []
+        for key, cell in data.items():
+            value = cell.get("value", "") if isinstance(cell, dict) else cell
+            if not value:
+                continue
+            if cell.get("type") == "primary":
+                title = str(value)
+            else:
+                fields.append(f"{key}={value}")
+        suffix = f" | {'; '.join(fields)}" if fields else ""
+        print(f"- {title or '(Untitled)'} (page_id: {page_id}){suffix}")
 
-    await with_session(args, run)
+
+async def cmd_page_expanded(args: argparse.Namespace) -> None:
+    server = load_server_config(args.config, args.server)
+    block_id = args.block_id or server.get("env", {}).get("WOLAI_ROOT_ID", "")
+    if not block_id:
+        raise SystemExit("No block_id provided and WOLAI_ROOT_ID is not set.")
+
+    token = get_wolai_token(server)
+    lines = render_expanded_block(
+        token,
+        block_id,
+        max_depth=args.max_depth,
+        expand_inline_links=not args.no_inline_links,
+    )
+    text = "\n".join(lines)
+    if args.limit and len(text) > args.limit:
+        text = text[: args.limit] + "\n\n...[truncated]"
+    print(text)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -184,6 +341,20 @@ def build_parser() -> argparse.ArgumentParser:
     page.add_argument("block_id", nargs="?")
     page.add_argument("--limit", type=int, default=0)
     page.set_defaults(func=cmd_page)
+
+    page_expanded = sub.add_parser(
+        "page-expanded",
+        help="Read page content and recursively expand reference blocks.",
+    )
+    page_expanded.add_argument("block_id", nargs="?")
+    page_expanded.add_argument("--max-depth", type=int, default=4)
+    page_expanded.add_argument("--limit", type=int, default=0)
+    page_expanded.add_argument(
+        "--no-inline-links",
+        action="store_true",
+        help="Do not expand inline bi_link references.",
+    )
+    page_expanded.set_defaults(func=cmd_page_expanded)
 
     search = sub.add_parser("search", help="Search page titles.")
     search.add_argument("query")

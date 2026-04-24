@@ -45,6 +45,16 @@ Read a page:
 C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py page fND6EnXuZdoA1RPavzgaSY
 ```
 
+Read a page and expand Wolai reference blocks:
+
+```powershell
+C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py page-expanded rT8wZuoL6GKvVLi1VEP1SS --max-depth 4
+```
+
+This follows `[reference]` blocks through `source_block_id` and inline
+`bi_link` references through `block_id`. It keeps a visited set and stops at
+the configured max depth to avoid reference cycles.
+
 Read database rows:
 
 ```powershell
@@ -74,3 +84,6 @@ C:\Users\lacus\anaconda3\python.exe .\scripts\wolai_mcp_client.py search Amazon 
 - `search_pages_by_title` succeeds for ASCII queries.
 - Wolai database rows can be read through `GET /v1/databases/{id}`. The helper
   script exposes this as the `database` command and prints row `page_id` values.
+- Wolai reference blocks can hide answer content from MCP's simplified page
+  rendering. The helper script exposes `page-expanded` to recursively resolve
+  `source_block_id` and inline `bi_link` references with cycle protection.
