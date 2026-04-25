@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wolai-mcp-plus"
+version = "0.1.0"
+description = "Machine-local Wolai MCP server with rich block, reference, bi_link, and database handling."
+requires-python = ">=3.10"
+dependencies = [
+  "mcp[cli]>=1.0.0",
+  "requests>=2.28.0",
+]
+
+[project.scripts]
+wolai-mcp-plus = "wolai_mcp_plus.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

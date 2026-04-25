@@ -11,6 +11,7 @@ Codex config files.
 - Default Codex config path: `CODEX_CONFIG` when set, otherwise
   `~/.codex/config.toml`
 - Package/runtime: `wolai-mcp==1.1.0` installed in any local Python environment
+- Repo-local replacement server: `scripts/wolai_mcp_plus.py`
 - MCP implementation: stdio server built with `mcp.server.fastmcp.FastMCP`
 - Server display name: `wolai-knowledge-base`
 - Required Wolai env values: `WOLAI_APP_ID`, `WOLAI_APP_SECRET`,
@@ -36,6 +37,19 @@ Windows venv command shape:
 
 ```toml
 command = "C:\\absolute\\path\\to\\Wolai_MCP\\.venv\\Scripts\\wolai-mcp.exe"
+```
+
+Preferred repo-local replacement server shape:
+
+```toml
+[mcp_servers.wolai-kb]
+command = "/absolute/path/to/Wolai_MCP/.venv/bin/python"
+args = ["/absolute/path/to/Wolai_MCP/scripts/wolai_mcp_plus.py"]
+
+[mcp_servers.wolai-kb.env]
+WOLAI_APP_ID = "..."
+WOLAI_APP_SECRET = "..."
+WOLAI_ROOT_ID = "fND6EnXuZdoA1RPavzgaSY"
 ```
 
 Do not print or write `WOLAI_APP_SECRET` into logs, docs, commits, or chat
@@ -64,6 +78,18 @@ Read-oriented tools:
 - `search_pages_by_title`: traverse page tree and match page titles.
 - `get_breadcrumbs`: trace a block path back through page hierarchy.
 
+Repo-local Wolai MCP Plus read tools:
+
+- `get_block_raw`: return raw block JSON for unknown block types.
+- `read_block`: render pages/blocks with separate child/reference/inline
+  expansion controls.
+- `get_database_rows`: read database rows and row page IDs.
+- `search_tree`: search pages, blocks, and database row titles by traversing
+  from a root.
+- `get_api_capabilities`: explain implemented tools and public OpenAPI limits.
+- `list_available_tools`: plain-language tool list for agents that cannot
+  inspect MCP schemas.
+
 Configuration tools:
 
 - `set_wolai_credentials`: set Wolai App ID/App Secret.
@@ -83,23 +109,27 @@ Database note:
 
 Block reference rules:
 
-- Some Wolai pages store real answer text in `[reference]` blocks. MCP's
-  simplified `get_page_content` output may show them as `(Empty)`.
+- Some Wolai pages store real answer text in `[reference]` blocks. The public
+  package's simplified `get_page_content` output may show them as `(Empty)`.
+- Prefer `read_block` from Wolai MCP Plus when available.
 - For a block-level `[reference]`, read the reference block's raw OpenAPI JSON,
   find `source_block_id`, then read that source block as the real content.
 - For inline rich-text links, inspect entries with `type: "bi_link"` and
   `block_id`. Read the target block only after checking its type.
-- Inline `bi_link.block_id` should be expanded only when the target is a common
-  body element: text, heading, list, numbered list, formula/equation, callout,
-  quote, code, or another reference.
+- Inline `bi_link.block_id` should normally be expanded only when the target is
+  a common body element: text, heading, list, numbered list, formula/equation,
+  callout, quote, code, or another reference. Use `expand_inline=all` only when
+  the caller explicitly wants to chase page/database links.
 - If an inline `bi_link.block_id` target is a page, database, image, media, or
   other container/asset block, normally do not expand it. Treat it as a link or
   source pointer.
 - Always keep a per-read `visited` set and stop if a block ID repeats. Reference
-  chains can form loops. Also use a small max depth.
+  chains can form loops. Use path-based cycle detection where possible so the
+  same block can still be rendered from independent branches.
 - Prefer targeted block-by-block resolution over blindly expanding an entire
-  page. `scripts/wolai_mcp_client.py page-expanded <block_id>` is only a
-  debugging convenience, not the default reading strategy.
+  page. In Wolai MCP Plus, tune `child_depth`, `reference_depth`,
+  `inline_depth`, `expand_inline`, `expand_children`, `database_page_depth`, and
+  `request_budget` per task.
 - A helper may cache block JSON only within a single command invocation to avoid
   duplicate reads. Do not persist cache across commands; a new command should
   re-read Wolai because page content may change.

@@ -10,3 +10,15 @@ command = "/absolute/path/to/Wolai_MCP/.venv/bin/wolai-mcp"
 WOLAI_APP_ID = "replace-me"
 WOLAI_APP_SECRET = "replace-me"
 WOLAI_ROOT_ID = "fND6EnXuZdoA1RPavzgaSY"
+
+# Alternative: use the repo-local Wolai MCP Plus server.
+# This version has richer reference, bi_link, and database handling.
+#
+# [mcp_servers.wolai-kb]
+# command = "/absolute/path/to/Wolai_MCP/.venv/bin/python"
+# args = ["/absolute/path/to/Wolai_MCP/scripts/wolai_mcp_plus.py"]
+#
+# [mcp_servers.wolai-kb.env]
+# WOLAI_APP_ID = "replace-me"
+# WOLAI_APP_SECRET = "replace-me"
+# WOLAI_ROOT_ID = "fND6EnXuZdoA1RPavzgaSY"

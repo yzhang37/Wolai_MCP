@@ -12,6 +12,7 @@ files. Do not commit real credentials or personal absolute paths.
 - Helper default config path: `CODEX_CONFIG` when set, otherwise
   `~/.codex/config.toml`
 - Wolai package: `wolai-mcp==1.1.0`
+- Repo-local replacement server: `scripts/wolai_mcp_plus.py`
 - Required env values in the Codex server config:
   `WOLAI_APP_ID`, `WOLAI_APP_SECRET`, `WOLAI_ROOT_ID`
 
@@ -37,6 +38,60 @@ command = "C:\\absolute\\path\\to\\Wolai_MCP\\.venv\\Scripts\\wolai-mcp.exe"
 
 Never print or write `WOLAI_APP_SECRET` into logs, docs, commits, or chat unless
 the user explicitly requests secret inspection.
+
+## Wolai MCP Plus
+
+This repo includes a replacement server because the public `wolai-mcp` package
+does not handle Wolai's richer data model well enough for agent use.
+
+Use this Codex config shape to run the repo-local server:
+
+```toml
+[mcp_servers.wolai-kb]
+command = "/absolute/path/to/Wolai_MCP/.venv/bin/python"
+args = ["/absolute/path/to/Wolai_MCP/scripts/wolai_mcp_plus.py"]
+
+[mcp_servers.wolai-kb.env]
+WOLAI_APP_ID = "..."
+WOLAI_APP_SECRET = "..."
+WOLAI_ROOT_ID = "fND6EnXuZdoA1RPavzgaSY"
+```
+
+Main improvements:
+
+- `read_block` uses separate `child_depth`, `reference_depth`, and
+  `inline_depth` controls instead of one rigid recursion limit.
+- `reference` blocks are resolved through `source_block_id`.
+- Inline `bi_link` targets can be handled with `expand_inline=off`,
+  `metadata`, `body`, or `all`.
+- Database blocks and database row pages can be read through the same renderer.
+- Every render has a request budget and basic 429 retry/backoff to avoid runaway
+  OpenAPI calls.
+- `get_block_raw` is available for unknown block types and debugging.
+
+Implemented tools:
+
+```text
+get_wolai_config
+get_api_capabilities
+list_available_tools
+get_root_info
+get_block_raw
+list_child_blocks
+read_block
+get_database_rows
+search_tree
+create_page
+add_blocks
+add_text_blocks
+add_code_block
+create_database_rows
+```
+
+Known Wolai OpenAPI limit: public docs currently expose token, block
+create/detail/children, database read, and database row create. Block update or
+delete, and database row update or delete, are therefore intentionally not
+pretended to be safe supported tools.
 
 ## Setup
 
