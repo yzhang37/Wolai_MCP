@@ -65,7 +65,11 @@ Main improvements:
 - Inline `bi_link` targets can be handled with `expand_inline=off`,
   `metadata`, `body`, or `all`.
 - Database blocks and database row pages can be read through the same renderer.
-- Every render has a request budget and basic 429 retry/backoff to avoid runaway
+- Child/database list reads expose Wolai cursor pagination instead of pretending
+  that one call means "all rows".
+- Requests are throttled inside the server to Wolai's 5 requests/second limit,
+  and create calls are chunked into Wolai's 20 records/request limit.
+- Every render has a request budget and 429 retry/backoff to avoid runaway
   OpenAPI calls.
 - `get_block_raw` is available for unknown block types and debugging.
 
@@ -88,10 +92,22 @@ add_code_block
 create_database_rows
 ```
 
-Known Wolai OpenAPI limit: public docs currently expose token, block
-create/detail/children, database read, and database row create. Block update or
-delete, and database row update or delete, are therefore intentionally not
-pretended to be safe supported tools.
+Known Wolai OpenAPI limits:
+
+- Batch reads accept `page_size` up to 200 and return `has_more` /
+  `next_cursor` for the agent to continue with `cursor`.
+- Create calls accept up to 20 records per request; this server chunks larger
+  create payloads and reports the chunks.
+- Same-user API calls are limited to 5 requests/second; this server throttles
+  requests in-process.
+- Public docs currently expose token, block create/detail/children, database
+  read, database row create, and token refresh. Block update or delete, and
+  database row update or delete, are therefore intentionally not pretended to be
+  safe supported tools.
+- `POST /blocks` does not accept `database` as a creatable block type, so MCP
+  Plus cannot create new database blocks from OpenAPI alone.
+- Database row creation creates row pages. Wolai's public docs show empty row
+  objects; cell-value writes are not documented and were observed to be ignored.
 
 ## Setup
 
@@ -200,6 +216,30 @@ Prefer targeted block-by-block resolution when accuracy matters:
 - Do not expand inline targets that are pages, databases, images, media, or other
   container/asset blocks; treat them as links or source pointers.
 - Keep a per-read visited set and small max depth to avoid reference loops.
+
+## Pagination And Limits
+
+Wolai MCP Plus intentionally keeps pagination explicit for agents:
+
+- `list_child_blocks(block_id, page_size=200, cursor="")` returns one page of
+  child blocks plus `has_more`, `next_cursor`, `total_count` when Wolai exposes
+  it, and `is_complete`.
+- `get_database_rows(database_id, page_size=100, cursor="")` returns one page
+  of rows plus the same pagination metadata.
+- If `has_more=true`, the agent should call the same tool again with
+  `cursor=next_cursor`.
+- `page_size` is clamped to Wolai's max of 200. The server does not use a hidden
+  `max_rows` default that could make a partial read look complete.
+- `add_blocks`, `add_text_blocks`, `create_page`, `add_code_block`, and
+  `create_database_rows` automatically split create requests into chunks of 20
+  records and return chunk metadata.
+- `create_database_rows` returns created row page IDs. Use returned row pages
+  for page-content writes; do not assume database cell values were written.
+- Create-side aliases are accepted for common agent names:
+  `bulleted_list -> bull_list`, `numbered_list -> enum_list`, and
+  `equation -> block_equation`.
+- All OpenAPI requests, including token calls, pass through a lightweight
+  in-process 5 QPS limiter.
 
 The `page-expanded` command is a debugging convenience for this process. It is
 not meant to replace careful targeted inspection. Block JSON may be cached only

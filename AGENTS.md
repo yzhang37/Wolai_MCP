@@ -73,7 +73,8 @@ Read-oriented tools:
 
 - `get_wolai_config`: show config status, masking secret presence.
 - `get_root_info`: read the configured root page title and ID.
-- `list_child_blocks`: list immediate child blocks/pages for a block ID.
+- `list_child_blocks`: list one page of immediate child blocks/pages for a
+  block ID, returning `has_more` and `next_cursor` when more children exist.
 - `get_page_content`: read a page/block and render child blocks as text.
 - `search_pages_by_title`: traverse page tree and match page titles.
 - `get_breadcrumbs`: trace a block path back through page hierarchy.
@@ -83,7 +84,8 @@ Repo-local Wolai MCP Plus read tools:
 - `get_block_raw`: return raw block JSON for unknown block types.
 - `read_block`: render pages/blocks with separate child/reference/inline
   expansion controls.
-- `get_database_rows`: read database rows and row page IDs.
+- `get_database_rows`: read one page of database rows and row page IDs,
+  returning `has_more` and `next_cursor` when more rows exist.
 - `search_tree`: search pages, blocks, and database row titles by traversing
   from a root.
 - `get_api_capabilities`: explain implemented tools and public OpenAPI limits.
@@ -104,6 +106,14 @@ Database note:
   not returned by `list_child_blocks`.
 - Use Wolai OpenAPI `GET /v1/databases/{id}` to list database rows. Each row
   includes a `page_id`; read that row page with `get_page_content`.
+- Wolai paginates batch reads with `page_size` (max 200) and `start_cursor`.
+  MCP Plus exposes this as `page_size` and `cursor`; if `has_more=true`, call
+  the same tool again with `cursor=next_cursor`.
+- Public OpenAPI does not let `POST /blocks` create a `database` block. Use an
+  existing database ID for database-row tests or writes.
+- `create_database_rows` creates database row pages and returns their page IDs.
+  Wolai public docs show empty row objects; cell-value writes are not documented
+  and were observed to be ignored by the API.
 - `scripts/wolai_mcp_client.py database <database_id>` wraps this read-only
   database call using credentials from Codex config without printing secrets.
 
@@ -139,6 +149,11 @@ Write tools:
 - `create_page`: create a subpage.
 - `add_block`: append text/list/heading/etc. blocks.
 - `add_code_block`: append a code block.
+- MCP Plus write helpers split create payloads into Wolai's 20 records/request
+  limit and return chunk metadata.
+- MCP Plus accepts create-side aliases for common agent names:
+  `bulleted_list -> bull_list`, `numbered_list -> enum_list`, and
+  `equation -> block_equation`.
 
 Unless the user asks to edit Wolai, default to the read-only tools.
 
@@ -155,6 +170,9 @@ Unless the user asks to edit Wolai, default to the read-only tools.
   content, because Wolai pages may contain emoji or non-GBK text.
 - `search_pages_by_title` can be slow because Wolai does not expose a global
   search API; the MCP server traverses the tree from the root.
+- Wolai's documented API limit is 5 requests/second per user. MCP Plus enforces
+  a lightweight in-process throttle and still keeps request budgets on recursive
+  reads.
 - Avoid passing Chinese text through PowerShell here-strings unless stdout and
   source encoding are controlled. ASCII queries such as `Amazon` are safer for
   smoke tests.
@@ -174,11 +192,21 @@ For read tasks:
    type. Expand only body-element targets; skip page/database/media targets.
 7. Use `search_pages_by_title` only when navigation is not enough.
 
+For MCP Plus pagination:
+
+1. Start with `page_size=100` or `page_size=200` depending on how much context
+   the task needs.
+2. Treat `has_more=false` as complete for that list.
+3. If `has_more=true`, call the same tool again with `cursor=next_cursor`.
+4. Do not assume a missing `total_count` means zero or complete; Wolai may omit
+   total counts.
+
 For write tasks:
 
 1. Confirm the exact target page ID and intended change with the user.
 2. Prefer `create_page`, `add_block`, or `add_code_block` over direct API calls.
-3. Report the resulting page/block ID after the write.
+3. Let MCP Plus chunk large creates into batches of 20, and report the resulting
+   page/block IDs or chunk metadata after the write.
 
 ## Local Helper Script
 
